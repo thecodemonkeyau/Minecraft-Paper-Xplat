@@ -164,6 +164,24 @@ This can also be done non-persistently with the following ethtool command: <pre>
 
 <h2>Update History</h2>
 <ul>
+  <li>May 3rd 2026</li>
+    <ul>
+      <li>Update to 26.1.2</li>
+      <li>Update OpenJDK to OpenJDK 25</li>
+    </ul>
+  <li>January 25th 2026</li>
+    <ul>
+      <li>Update to 1.21.11</li>
+      <li>Implement fixes to move to Paper API v3</li>
+    </ul>
+  <li>July 26th 2025</li>
+    <ul>
+      <li>Updated build process to use buildx for multi-arch builds</li>
+    </ul>
+  <li>July 24th 2025</li>
+    <ul>
+      <li>Updated default version to 1.21.8 (remember, you never need to wait for updates to change Minecraft versions, just use -e Version=1.21.4)</li>
+    </ul>
   <li>February 8th 2025</li>
     <ul>
       <li>Updated default version to 1.21.4 (remember, you never need to wait for updates to change Minecraft versions, just use -e Version=1.21.4)</li>

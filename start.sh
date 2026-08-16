@@ -153,16 +153,22 @@ fi
 if [ "$?" != 0 ]; then
     echo "Unable to connect to update website (internet connection may be down).  Skipping update ..."
 else
-    # Get latest build
-    BuildJSON=$(curl --no-progress-meter -H "Accept-Encoding: identity" -H "Accept-Language: en" -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4.212 Safari/537.36" https://api.papermc.io/v2/projects/paper/versions/$Version)
-    Build=$(echo "$BuildJSON" | rev | cut -d, -f 1 | cut -d']' -f 2 | cut -d'[' -f 1 | rev)
-    Build=$(($Build + 0))
-    if [[ $Build != 0 ]]; then
+    # Get latest build using PaperMC API v3
+    Build=$(curl -s -L "https://fill.papermc.io/v3/projects/paper/versions/$Version" | jq -r '.builds[0]' 2>/dev/null)
+    if [[ -n "$Build" && "$Build" != "null" ]]; then
         echo "Latest paperclip build found: $Build"
-        if [ -z "$QuietCurl" ]; then
-            curl -H "Accept-Encoding: identity" -H "Accept-Language: en" -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4.212 Safari/537.36" -o /minecraft/paperclip.jar "https://api.papermc.io/v2/projects/paper/versions/$Version/builds/$Build/downloads/paper-$Version-$Build.jar"
+        # Get the SHA256 hash and filename for the download URL (pipe directly to avoid newline issues in commit messages)
+        SHA256=$(curl -s -L "https://fill.papermc.io/v3/projects/paper/versions/$Version/builds/$Build" | jq -r '.downloads["server:default"].checksums.sha256' 2>/dev/null)
+        FileName="paper-$Version-$Build.jar"
+        if [[ -n "$SHA256" && "$SHA256" != "null" ]]; then
+            echo "Downloading Paper $Version build $Build..."
+            if [ -z "$QuietCurl" ]; then
+                curl -H "Accept-Encoding: identity" -H "Accept-Language: en" -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4.212 Safari/537.36" -o /minecraft/paperclip.jar "https://fill-data.papermc.io/v1/objects/$SHA256/$FileName"
+            else
+                curl --no-progress-meter -H "Accept-Encoding: identity" -H "Accept-Language: en" -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4.212 Safari/537.36" -o /minecraft/paperclip.jar "https://fill-data.papermc.io/v1/objects/$SHA256/$FileName"
+            fi
         else
-            curl --no-progress-meter -H "Accept-Encoding: identity" -H "Accept-Language: en" -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4.212 Safari/537.36" -o /minecraft/paperclip.jar "https://api.papermc.io/v2/projects/paper/versions/$Version/builds/$Build/downloads/paper-$Version-$Build.jar"
+            echo "Unable to retrieve download info for Paper build $Build"
         fi
     else
         echo "Unable to retrieve latest Paper build (got result of $Build)"
@@ -185,21 +191,30 @@ else
     fi
 
     if [ -z "$NoViaVersion" ]; then
-        # Update ViaVersion if new version is available
-        ViaVersionVersion=$(curl --no-progress-meter -k -L -H "Accept-Encoding: identity" -H "Accept-Language: en" -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4.212 Safari/537.36" https://ci.viaversion.com/job/ViaVersion/lastBuild/artifact/build/libs/ | grep -P '(?<=href=")ViaVersion[^"]+' -o --max-count=1 | head -n1)
-        if [ -n "$ViaVersionVersion" ]; then
-            ViaVersionMD5=$(curl --no-progress-meter -k -L -H "Accept-Encoding: identity" -H "Accept-Language: en" -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4.212 Safari/537.36" "https://ci.viaversion.com/job/ViaVersion/lastBuild/artifact/build/libs/$ViaVersionVersion/*fingerprint*/" | grep breadcrumbs | cut -d'_' -f24- | cut -d'<' -f2 | cut -d'>' -f2)
-            if [ -n "$ViaVersionMD5" ]; then
-                LocalMD5=$(md5sum plugins/ViaVersion.jar | cut -d' ' -f1)
-                if [ -e /minecraft/plugins/ViaVersion.jar ] && [ "$LocalMD5" = "$ViaVersionMD5" ]; then
-                    echo "ViaVersion is up to date"
+        if [ -n "$ViaVersionSnapshot" ]; then
+            # Update ViaVersion from Jenkins CI (snapshot/dev versions)
+            echo "Updating ViaVersion from Jenkins CI (snapshot)..."
+            ViaVersionVersion=$(curl -s -k -L "https://ci.viaversion.com/job/ViaVersion/lastBuild/artifact/build/libs/" | grep -oE 'href="ViaVersion[^"]+' | head -1 | sed 's/href="//')
+            if [ -n "$ViaVersionVersion" ]; then
+                echo "Found ViaVersion: $ViaVersionVersion"
+                if [ -z "$QuietCurl" ]; then
+                    curl -H "Accept-Encoding: identity" -H "Accept-Language: en" -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4.212 Safari/537.36" -o /minecraft/plugins/ViaVersion.jar "https://ci.viaversion.com/job/ViaVersion/lastBuild/artifact/build/libs/$ViaVersionVersion"
                 else
-                    echo "Updating ViaVersion..."
-                    if [ -z "$QuietCurl" ]; then
-                        curl -H "Accept-Encoding: identity" -H "Accept-Language: en" -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4.212 Safari/537.36" -o /minecraft/plugins/ViaVersion.jar "https://ci.viaversion.com/job/ViaVersion/lastBuild/artifact/build/libs/$ViaVersionVersion"
-                    else
-                        curl --no-progress-meter -H "Accept-Encoding: identity" -H "Accept-Language: en" -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4.212 Safari/537.36" -o /minecraft/plugins/ViaVersion.jar "https://ci.viaversion.com/job/ViaVersion/lastBuild/artifact/build/libs/$ViaVersionVersion"
-                    fi
+                    curl --no-progress-meter -H "Accept-Encoding: identity" -H "Accept-Language: en" -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4.212 Safari/537.36" -o /minecraft/plugins/ViaVersion.jar "https://ci.viaversion.com/job/ViaVersion/lastBuild/artifact/build/libs/$ViaVersionVersion"
+                fi
+            else
+                echo "Unable to check for updates to ViaVersion!"
+            fi
+        else
+            # Update ViaVersion from GitHub Releases (stable versions) - default
+            ViaVersionURL=$(curl -s "https://api.github.com/repos/ViaVersion/ViaVersion/releases/latest" | jq -r '.assets[0].browser_download_url' 2>/dev/null)
+            if [[ -n "$ViaVersionURL" && "$ViaVersionURL" != "null" ]]; then
+                ViaVersionTag=$(curl -s "https://api.github.com/repos/ViaVersion/ViaVersion/releases/latest" | jq -r '.tag_name' 2>/dev/null)
+                echo "Updating ViaVersion to $ViaVersionTag..."
+                if [ -z "$QuietCurl" ]; then
+                    curl -H "Accept-Encoding: identity" -H "Accept-Language: en" -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4.212 Safari/537.36" -o /minecraft/plugins/ViaVersion.jar "$ViaVersionURL"
+                else
+                    curl --no-progress-meter -H "Accept-Encoding: identity" -H "Accept-Language: en" -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4.212 Safari/537.36" -o /minecraft/plugins/ViaVersion.jar "$ViaVersionURL"
                 fi
             else
                 echo "Unable to check for updates to ViaVersion!"
